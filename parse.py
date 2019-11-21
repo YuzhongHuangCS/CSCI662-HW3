@@ -10,44 +10,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 #from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from preparedata import ModelConfig, DataReader, FeatureExtractor, Dataset
+from preparedata import DataReader, FeatureExtractor, Dataset
+from train import Net
+
+np.random.seed(1234)
+torch.manual_seed(1234)
+
 punc_pos = ["''", "``", ":", ".", ","]
 pos_prefix = "<p>:"
 dep_prefix = "<d>:"
-
-def read_file(filename, vocab):
-	df = pd.read_csv(filename, sep='\t')
-
-	word2idx = vocab['word2idx']
-	pos2idx = vocab['pos2idx']
-	dep2idx = vocab['dep2idx']
-	n_dep = len(dep2idx)
-
-	def get_action(word):
-		if word == 'shift':
-			return 2 * n_dep
-		else:
-			parts = word.split(':', 1)
-			if parts[0] == 'left':
-				return vocab['dep2idx'][parts[1]]
-			else:
-				if parts[0] == 'right':
-					return vocab['dep2idx'][parts[1]] + n_dep
-				else:
-					pdb.set_trace()
-					print('Unexpected')
-
-	df_word = df.iloc[:, :18].applymap(word2idx.get)
-	df_pos = df.iloc[:, 18:36].applymap(pos2idx.get) + len(word2idx)
-	df_dep = df.iloc[:, 36:48].applymap(dep2idx.get) + (len(word2idx)+len(pos2idx))
-	df_action = df.iloc[:, 48:].applymap(get_action)
-
-	assert df_word.isnull().values.any() == False
-	assert df_pos.isnull().values.any() == False
-	assert df_dep.isnull().values.any() == False
-
-	return np.hstack([df_word, df_pos, df_dep]), df_action.values
-
 
 def initialize_embedding(filename):
 	pickle_filename = filename + '.pickle'
@@ -68,63 +39,6 @@ def initialize_embedding(filename):
 
 		return word_embedding
 
-def get_UAS(data, dep2idx=None):
-	correct_tokens = 0
-	correct_LAS = 0
-	all_tokens_LAS = 0
-	correct_tokens_total = 0
-	all_tokens = 0
-	dep_offset = len(dep2idx)
-	punc_token_pos = [pos_prefix + each for each in punc_pos]
-	for sentence in data:
-		# reset each predicted head before evaluation
-		[token.reset_predicted_head_id() for token in sentence.tokens]
-
-		#pdb.set_trace()
-		head = [-2] * len(sentence.tokens)
-		# assert len(sentence.dependencies) == len(sentence.predicted_dependencies)
-		for h, t, dep_id in sentence.predicted_dependencies:
-			head[t.token_id] = (h.token_id, dep_id%dep_offset)
-
-		non_punc_tokens = [token for token in sentence.tokens]
-		#non_punc_tokens = [token for token in sentence.tokens if token.pos not in punc_token_pos]
-		correct_head_id = [1 if token.head_id == head[token.token_id][0] else 0 for (_, token) in enumerate(non_punc_tokens)]
-		#pdb.set_trace()
-		res_head_id = sum(correct_head_id)
-		correct_tokens += res_head_id
-
-		if dep2idx:
-			correct_tokens_total += res_head_id
-			correct_dep = [1 if dep2idx[token.dep] == head[token.token_id][1] else 0 for (_, token) in enumerate(non_punc_tokens)]
-			correct_tokens_total += sum(correct_dep)
-
-			size = min(len(correct_head_id), len(correct_dep))
-			all_tokens_LAS += size*2
-			for idx in range(size):
-				if correct_head_id[idx] == 1 and correct_dep[idx] == 1:
-					correct_LAS += 2
-
-		# all_tokens += len(sentence.tokens)
-		all_tokens += len(non_punc_tokens)
-
-	UAS = correct_tokens / float(all_tokens)
-	LAS = correct_LAS / float(all_tokens_LAS)
-	Accu = correct_tokens_total / float(all_tokens*2)
-	return UAS, LAS, Accu
-
-class Net(nn.Module):
-	def __init__(self, word_embedding, vocab):
-		super(Net, self).__init__()
-		self.word_embedding = nn.Parameter(torch.from_numpy(word_embedding))
-		self.fc1 = nn.Linear(50*48, 200)
-		self.fc2 = nn.Linear(200, 2*len(vocab['dep2idx']) + 1)
-
-	def forward(self, x):
-		emb = F.embedding(x, self.word_embedding).view(-1, 50*48)
-		hidden = torch.tanh(self.fc1(emb))
-		output = self.fc2(hidden)
-		return output
-
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser('Nonlinear text classification trainer')
 	parser.add_argument('-m', help='model filename', type=str, required=True)
@@ -134,8 +48,6 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	print('Args:', args)
 
-	model_config = ModelConfig()
-
 	data_reader = DataReader()
 	test_lines = open(args.i, "r").readlines()
 
@@ -143,8 +55,8 @@ if __name__ == '__main__':
 	test_data = data_reader.read_data(test_lines)
 	print ("Loaded Train data")
 
-	feature_extractor = FeatureExtractor(model_config)
-	dataset = Dataset(model_config, test_data, None, None, feature_extractor)
+	feature_extractor = FeatureExtractor()
+	dataset = Dataset(test_data, feature_extractor)
 
 	with open(args.vocab, 'rb') as fin:
 		vocab = pickle.load(fin)
@@ -214,13 +126,11 @@ if __name__ == '__main__':
 		[sentence.reset_to_initial_state() for sentence in batch_sentences]
 		rem_sentences = rem_sentences[curr_batch_size:]
 
-	valid_UAS, valid_LAS, valid_Accu = get_UAS(dataset.train_data, dep2idx=dataset.dep2idx)
-	#pdb.set_trace()
 	with open(args.o, 'w') as fout:
 		for sentence in dataset.train_data:
 			head = [-2] * len(sentence.tokens)
 			for h, t, dep_id in sentence.predicted_dependencies:
-				head[t.token_id] = (h.token_id, dep_id%dep_offset)
+				head[t.token_index] = (h.token_index, dep_id%dep_offset)
 
 			for i, token in enumerate(sentence.tokens):
 				fields = token.line.rstrip().split('\t')
@@ -230,5 +140,4 @@ if __name__ == '__main__':
 				fout.write('\t'.join(fields) + '\n')
 			fout.write('\n')
 
-	pdb.set_trace()
-	print('123')
+	#pdb.set_trace()

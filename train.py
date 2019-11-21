@@ -11,6 +11,9 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
+#np.random.seed(1234)
+#torch.manual_seed(1234)
+
 def read_file(filename, vocab):
 	df = pd.read_csv(filename, sep='\t')
 
@@ -90,6 +93,7 @@ if __name__ == '__main__':
 		vocab = pickle.load(fin)
 
 	df_input, df_action = read_file(args.train, vocab)
+	df_input_v, df_action_v = read_file(args.dev, vocab)
 	word2idx = vocab['word2idx']
 	pos2idx = vocab['pos2idx']
 	dep2idx = vocab['dep2idx']
@@ -110,10 +114,16 @@ if __name__ == '__main__':
 
 	X = torch.from_numpy(df_input)
 	Y = torch.from_numpy(df_action.squeeze())
+
+	X_v = torch.from_numpy(df_input_v).cuda()
+	Y_v = torch.from_numpy(df_action_v.squeeze()).cuda()
+
 	dataset = torch.utils.data.TensorDataset(X, Y)
 	loader = torch.utils.data.DataLoader(dataset, batch_size=20480, shuffle=True, num_workers=0)
 	loss = nn.CrossEntropyLoss()
-	opt = torch.optim.Adam(net.parameters(), lr=0.001, weight_decay=1e-8)
+	opt = torch.optim.Adam(net.parameters(), lr=0.01, weight_decay=1e-8)
+	#lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.95, patience=2, verbose=True)
+
 	for epoch in range(20):
 		for X_batch, Y_batch in loader:
 			X_output = net(X_batch.cuda())
@@ -123,8 +133,14 @@ if __name__ == '__main__':
 			nll.backward()
 			opt.step()
 
+		#X_output_v = net(X_v)
+		#nll_v = loss(X_output_v, Y_v)
+		#lr_scheduler.step(nll_v)
+		#print('valid', epoch, nll_v)
+
+
 
 	torch.save(net.state_dict(), args.o)
 
-	pdb.set_trace()
+	#pdb.set_trace()
 	print('123')
