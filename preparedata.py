@@ -336,10 +336,6 @@ class FeatureExtractor(object):
 			else:
 				#pdb.set_trace()
 				non_projective += 1
-				word_inputs.extend(this_word_inputs)
-				pos_inputs.extend(this_pos_inputs)
-				dep_inputs.extend(this_dep_inputs)
-				labels.extend(this_labels)
 
 			# reset stack and buffer to default state
 			sentence.reset_to_initial_state()
@@ -418,7 +414,6 @@ if __name__ == '__main__':
 			for key, value in vocab.items():
 				setattr(dataset, key, value)
 
-			pdb.set_trace()
 		else:
 			print('Vocab file: {} Not found.'.format(args.vocab))
 	else:

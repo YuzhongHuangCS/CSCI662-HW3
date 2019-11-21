@@ -11,8 +11,8 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
-#np.random.seed(1234)
-#torch.manual_seed(1234)
+np.random.seed(1234)
+torch.manual_seed(1234)
 
 def read_file(filename, vocab):
 	df = pd.read_csv(filename, sep='\t')
@@ -121,7 +121,7 @@ if __name__ == '__main__':
 	dataset = torch.utils.data.TensorDataset(X, Y)
 	loader = torch.utils.data.DataLoader(dataset, batch_size=20480, shuffle=True, num_workers=0)
 	loss = nn.CrossEntropyLoss()
-	opt = torch.optim.Adam(net.parameters(), lr=0.01, weight_decay=1e-8)
+	opt = torch.optim.Adam(net.parameters(), lr=0.001, weight_decay=1e-8)
 	#lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.95, patience=2, verbose=True)
 
 	for epoch in range(20):

@@ -1,8 +1,5 @@
 .DS_Store
 *.pyc
-*.pyc
-*.csv
-*.csv
 *.csv
 data/
 __pycache__
@@ -11,3 +8,6 @@ vim.exe.stackdump
 *.pickle
 *.vec
 *.model
+*.conll
+*.converted
+*.jar
